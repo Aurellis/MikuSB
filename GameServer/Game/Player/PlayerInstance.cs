@@ -9,6 +9,7 @@ using MikuSB.GameServer.Command;
 using MikuSB.GameServer.Game.Character;
 using MikuSB.GameServer.Game.Inventory;
 using MikuSB.GameServer.Game.Lineup;
+using MikuSB.GameServer.Game.Quest;
 using MikuSB.GameServer.Server;
 using MikuSB.Proto;
 using MikuSB.TcpSharp;
@@ -19,8 +20,6 @@ namespace MikuSB.GameServer.Game.Player;
 
 public class PlayerInstance(PlayerGameData data)
 {
-    private const uint LegacyUnlockedLevelPassTime = 1_700_000_000;
-
     #region Property
     public Connection? Connection { get; set; }
 
@@ -37,6 +36,7 @@ public class PlayerInstance(PlayerGameData data)
     public CharacterManager CharacterManager { get; set; } = null!;
     public InventoryManager InventoryManager { get; set; } = null!;
     public LineupManager LineupManager { get; set; } = null!;
+    public QuestManager QuestManager { get; set; } = null!;
 
     #endregion
 
@@ -93,6 +93,7 @@ public class PlayerInstance(PlayerGameData data)
         InventoryManager = new InventoryManager(this);
         LineupManager = new LineupManager(this);
         CharacterManager = new CharacterManager(this);
+        QuestManager = new QuestManager(this);
 
         await Task.CompletedTask;
     }
@@ -324,7 +325,7 @@ public class PlayerInstance(PlayerGameData data)
 
     public void BuildPlayerAttr(bool additional = false)
     {
-        RemoveLegacyLevelUnlocks();
+        QuestManager.RemoveLegacyLevelUnlocks();
 
         var bootstrapAttrs = BuildLobbyBootstrapAttrs().ToList();
         if (additional) bootstrapAttrs.AddRange(BuildGirlFurnitureAttrs());
@@ -354,27 +355,6 @@ public class PlayerInstance(PlayerGameData data)
 
             Data.Attrs.Add(newAttr);
             existingAttrs[(gid, sid)] = newAttr;
-        }
-    }
-
-    private void RemoveLegacyLevelUnlocks()
-    {
-        var levelIds = GameData.ChapterLevelData.Keys
-            .Concat(GameData.DailyLevelData.Keys)
-            .Concat(GameData.RoleLevelData.Keys)
-            .Distinct();
-
-        foreach (var levelId in levelIds)
-        {
-            var passAttr = Data.Attrs.FirstOrDefault(x => x.Gid == 22 && x.Sid == levelId);
-            if (passAttr?.Val != LegacyUnlockedLevelPassTime)
-                continue;
-
-            Data.Attrs.Remove(passAttr);
-
-            var stateAttr = Data.Attrs.FirstOrDefault(x => x.Gid == 21 && x.Sid == levelId);
-            if (stateAttr != null)
-                Data.Attrs.Remove(stateAttr);
         }
     }
 

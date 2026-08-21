@@ -1,8 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using MikuSB.Database;
-using MikuSB.Database.Player;
 using MikuSB.GameServer.Game.Player;
 using MikuSB.GameServer.Game.BossPvp;
 using MikuSB.Proto;
@@ -16,9 +14,6 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Chapter;
 [CallGSApi("Chapter_DealLevelSettlement")]
 public class Chapter_DealLevelSettlement : ICallGSHandler
 {
-    private const uint LevelStateGroupId = 21;
-    private const uint LevelPassGroupId = 22;
-    private const uint LevelStarMask = 0b111;
     private static readonly Logger Logger = new("Chapter");
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
@@ -116,42 +111,8 @@ public class Chapter_DealLevelSettlement : ICallGSHandler
             return new JsonObject { ["sErr"] = "error.BadParam" };
         }
 
-        var sync = new NtfSyncPlayer();
-        var levelState = GetOrCreateAttr(player.Data, LevelStateGroupId, req.LevelId);
-        levelState.Val |= (uint)req.StarMask & LevelStarMask;
-        SyncAttr(sync, player, levelState);
-
-        var levelPass = GetOrCreateAttr(player.Data, LevelPassGroupId, req.LevelId);
-        levelPass.Val = Math.Max(1u, levelPass.Val + 1);
-        SyncAttr(sync, player, levelPass);
-
-        Logger.Info($"Level settlement saved. uid={player.Uid} levelId={req.LevelId} " +
-                    $"starMask={req.StarMask} stateVal={levelState.Val} passVal={levelPass.Val}");
-
-        DatabaseHelper.SaveDatabaseType(player.Data);
-        extraSync = sync;
+        extraSync = player.QuestManager.SettleLevel(req.LevelId, req.StarMask);
         return new JsonArray();
-    }
-
-    private static PlayerAttr GetOrCreateAttr(PlayerGameData data, uint gid, uint sid)
-    {
-        var attr = data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new PlayerAttr
-        {
-            Gid = gid,
-            Sid = sid
-        };
-        data.Attrs.Add(attr);
-        return attr;
-    }
-
-    private static void SyncAttr(NtfSyncPlayer sync, PlayerInstance player, PlayerAttr attr)
-    {
-        sync.Custom[player.ToPackedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
-        sync.Custom[player.ToShiftedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
     }
 
     private static JsonNode? NormalizeBossPvpSettlement(JsonNode? tbParam)
