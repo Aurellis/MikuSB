@@ -1,17 +1,26 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using MikuSB.Database;
+using MikuSB.Database.Player;
+using MikuSB.GameServer.Game.Player;
 using MikuSB.GameServer.Game.BossPvp;
 using MikuSB.Proto;
 using MikuSB.GameServer.Server.CallGS.Handlers.DreamCard;
 using MikuSB.GameServer.Server.CallGS.Handlers.Tower;
 using MikuSB.GameServer.Server.CallGS.Handlers.VirCapture;
+using MikuSB.Util;
 
 namespace MikuSB.GameServer.Server.CallGS.Handlers.Chapter;
 
 [CallGSApi("Chapter_DealLevelSettlement")]
 public class Chapter_DealLevelSettlement : ICallGSHandler
 {
+    private const uint LevelStateGroupId = 21;
+    private const uint LevelPassGroupId = 22;
+    private const uint LevelStarMask = 0b111;
+    private static readonly Logger Logger = new("Chapter");
+
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
         var req = JsonSerializer.Deserialize<DealLevelSettlementParam>(param);
@@ -31,7 +40,13 @@ public class Chapter_DealLevelSettlement : ICallGSHandler
 
         if (string.Equals(sCmd, "Chapter_LevelSettlement", StringComparison.Ordinal))
         {
-            return new JsonArray();
+            return HandleLevelSettlement(connection.Player!, tbParam, out extraSync);
+        }
+
+        if (string.Equals(sCmd, "Daily_LevelSettlement", StringComparison.Ordinal) ||
+            string.Equals(sCmd, "Role_LevelSettlement", StringComparison.Ordinal))
+        {
+            return HandleLevelSettlement(connection.Player!, tbParam, out extraSync);
         }
 
         if (string.Equals(sCmd, "Chapter_NewPrologueSettlement", StringComparison.Ordinal))
@@ -91,6 +106,54 @@ public class Chapter_DealLevelSettlement : ICallGSHandler
         return tbParam?.DeepClone() ?? new JsonObject();
     }
 
+    private static JsonNode HandleLevelSettlement(PlayerInstance player, JsonNode? tbParam, out NtfSyncPlayer? extraSync)
+    {
+        var req = tbParam?.Deserialize<LevelSettlementParam>();
+        if (req == null || req.LevelId == 0)
+        {
+            Logger.Error($"Invalid level settlement payload: {tbParam?.ToJsonString() ?? "null"}");
+            extraSync = new NtfSyncPlayer();
+            return new JsonObject { ["sErr"] = "error.BadParam" };
+        }
+
+        var sync = new NtfSyncPlayer();
+        var levelState = GetOrCreateAttr(player.Data, LevelStateGroupId, req.LevelId);
+        levelState.Val |= (uint)req.StarMask & LevelStarMask;
+        SyncAttr(sync, player, levelState);
+
+        var levelPass = GetOrCreateAttr(player.Data, LevelPassGroupId, req.LevelId);
+        levelPass.Val = Math.Max(1u, levelPass.Val + 1);
+        SyncAttr(sync, player, levelPass);
+
+        Logger.Info($"Level settlement saved. uid={player.Uid} levelId={req.LevelId} " +
+                    $"starMask={req.StarMask} stateVal={levelState.Val} passVal={levelPass.Val}");
+
+        DatabaseHelper.SaveDatabaseType(player.Data);
+        extraSync = sync;
+        return new JsonArray();
+    }
+
+    private static PlayerAttr GetOrCreateAttr(PlayerGameData data, uint gid, uint sid)
+    {
+        var attr = data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
+        if (attr != null)
+            return attr;
+
+        attr = new PlayerAttr
+        {
+            Gid = gid,
+            Sid = sid
+        };
+        data.Attrs.Add(attr);
+        return attr;
+    }
+
+    private static void SyncAttr(NtfSyncPlayer sync, PlayerInstance player, PlayerAttr attr)
+    {
+        sync.Custom[player.ToPackedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
+        sync.Custom[player.ToShiftedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
+    }
+
     private static JsonNode? NormalizeBossPvpSettlement(JsonNode? tbParam)
     {
         if (tbParam is not JsonObject obj)
@@ -115,4 +178,13 @@ internal sealed class DealLevelSettlementParam
 
     [JsonPropertyName("tbParam")]
     public JsonNode? TbParam { get; set; }
+}
+
+internal sealed class LevelSettlementParam
+{
+    [JsonPropertyName("nID")]
+    public uint LevelId { get; set; }
+
+    [JsonPropertyName("nStar")]
+    public int StarMask { get; set; }
 }

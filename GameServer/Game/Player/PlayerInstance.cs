@@ -19,6 +19,8 @@ namespace MikuSB.GameServer.Game.Player;
 
 public class PlayerInstance(PlayerGameData data)
 {
+    private const uint LegacyUnlockedLevelPassTime = 1_700_000_000;
+
     #region Property
     public Connection? Connection { get; set; }
 
@@ -322,6 +324,8 @@ public class PlayerInstance(PlayerGameData data)
 
     public void BuildPlayerAttr(bool additional = false)
     {
+        RemoveLegacyLevelUnlocks();
+
         var bootstrapAttrs = BuildLobbyBootstrapAttrs().ToList();
         if (additional) bootstrapAttrs.AddRange(BuildGirlFurnitureAttrs());
         var existingAttrs = Data.Attrs
@@ -350,6 +354,27 @@ public class PlayerInstance(PlayerGameData data)
 
             Data.Attrs.Add(newAttr);
             existingAttrs[(gid, sid)] = newAttr;
+        }
+    }
+
+    private void RemoveLegacyLevelUnlocks()
+    {
+        var levelIds = GameData.ChapterLevelData.Keys
+            .Concat(GameData.DailyLevelData.Keys)
+            .Concat(GameData.RoleLevelData.Keys)
+            .Distinct();
+
+        foreach (var levelId in levelIds)
+        {
+            var passAttr = Data.Attrs.FirstOrDefault(x => x.Gid == 22 && x.Sid == levelId);
+            if (passAttr?.Val != LegacyUnlockedLevelPassTime)
+                continue;
+
+            Data.Attrs.Remove(passAttr);
+
+            var stateAttr = Data.Attrs.FirstOrDefault(x => x.Gid == 21 && x.Sid == levelId);
+            if (stateAttr != null)
+                Data.Attrs.Remove(stateAttr);
         }
     }
 
@@ -435,28 +460,6 @@ public class PlayerInstance(PlayerGameData data)
         // Additional guide ids referenced directly by the Lua scripts and observed client logs.
         foreach (var guideId in new uint[] { 10_031, 10_041, 10_061, 10_081, 10_101, 10_224, 11_006, 11_202, 11_210, 22_002 })
             yield return (4, guideId, 999);
-
-        // Launch.GPASSID = 22 stores pass counts. ChapterLevel.GID = 21 stores star flags.
-        // Unlock every level defined in level.json so all chapters are accessible from the start.
-        foreach (var levelId in GameData.ChapterLevelData.Keys)
-        {
-            yield return (21, levelId, 7);
-            yield return (22, levelId, 1_700_000_000);
-        }
-
-        foreach (var levelId in GameData.DailyLevelData.Keys)
-        {
-            yield return (21, levelId, 7);
-            yield return (22, levelId, 1_700_000_000);
-        }
-
-        // Role fragment chapters use Condition.PRE_LEVEL against Launch.GPASSID as well.
-        // Mark every role level as cleared so character-specific stages beyond the first one unlock.
-        foreach (var levelId in GameData.RoleLevelData.Keys)
-        {
-            yield return (21, levelId, 7);
-            yield return (22, levelId, 1_700_000_000);
-        }
 
         foreach (var guide in GameData.GuideData.Values)
         {
