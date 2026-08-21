@@ -1,5 +1,6 @@
 using Google.Protobuf;
 using MikuSB.Data;
+using MikuSB.Data.Excel;
 using MikuSB.Database;
 using MikuSB.Database.Account;
 using MikuSB.Database.Inventory;
@@ -10,6 +11,7 @@ using MikuSB.GameServer.Game.Character;
 using MikuSB.GameServer.Game.Inventory;
 using MikuSB.GameServer.Game.Lineup;
 using MikuSB.GameServer.Game.Quest;
+using MikuSB.GameServer.Game.Reward;
 using MikuSB.GameServer.Server;
 using MikuSB.Proto;
 using MikuSB.TcpSharp;
@@ -37,6 +39,12 @@ public class PlayerInstance(PlayerGameData data)
     public InventoryManager InventoryManager { get; set; } = null!;
     public LineupManager LineupManager { get; set; } = null!;
     public QuestManager QuestManager { get; set; } = null!;
+    public RewardManager RewardManager { get; set; } = null!;
+
+    private QuestLevelType ActiveLevelType { get; set; }
+    private uint ActiveLevelId { get; set; }
+    private uint ActiveLevelSeed { get; set; }
+    public uint ActiveLevelTeamId { get; private set; }
 
     #endregion
 
@@ -94,6 +102,7 @@ public class PlayerInstance(PlayerGameData data)
         LineupManager = new LineupManager(this);
         CharacterManager = new CharacterManager(this);
         QuestManager = new QuestManager(this);
+        RewardManager = new RewardManager(this);
 
         await Task.CompletedTask;
     }
@@ -212,6 +221,7 @@ public class PlayerInstance(PlayerGameData data)
             Subchannel = "gm",
             Name = displayName,
             Level = Data.Level,
+            Exp = (uint)Math.Max(0, Data.Exp),
             Sex = Data.Gender,
             Vigor = Data.Vigor,
             Solutions = { LineupManager.LineupData.LineupInfo.Values.Select(x => x.ToProto()) },
@@ -316,6 +326,74 @@ public class PlayerInstance(PlayerGameData data)
             ["pc_jinshan.pc_jinshan"] = currentMoney
         };
         return sync;
+    }
+
+    public void BeginLevelSession(QuestLevelType levelType, uint levelId, uint seed, uint teamId = 0)
+    {
+        ActiveLevelType = levelType;
+        ActiveLevelId = levelId;
+        ActiveLevelSeed = seed;
+        ActiveLevelTeamId = teamId;
+    }
+
+    public bool IsLevelSession(QuestLevelType levelType, uint levelId, uint seed) =>
+        ActiveLevelType == levelType && ActiveLevelId == levelId && ActiveLevelSeed == seed;
+
+    public IReadOnlyList<PlayerLevelExcel> AddPlayerExperience(uint amount, NtfSyncPlayer sync)
+    {
+        if (amount == 0)
+            return [];
+
+        if (Data.Level == 0)
+            Data.Level = 1;
+
+        var leveledUp = new List<PlayerLevelExcel>();
+        var totalExp = (ulong)Math.Max(0, Data.Exp) + amount;
+        while (GameData.PlayerLevelData.TryGetValue(Data.Level, out var currentLevel) &&
+               currentLevel.MaxExp > 0 &&
+               totalExp >= currentLevel.MaxExp &&
+               GameData.PlayerLevelData.ContainsKey(Data.Level + 1))
+        {
+            totalExp -= currentLevel.MaxExp;
+            Data.Level++;
+            if (GameData.PlayerLevelData.TryGetValue(Data.Level, out var newLevel))
+                leveledUp.Add(newLevel);
+        }
+
+        Data.Exp = (int)Math.Min(int.MaxValue, totalExp);
+        sync.Core[(uint)PlayerCoreAttribute.Level] = Data.Level;
+        sync.Core[(uint)PlayerCoreAttribute.Exp] = (uint)Data.Exp;
+        return leveledUp;
+    }
+
+    public void AddCurrency(uint moneyType, uint amount, NtfSyncPlayer sync)
+    {
+        if (amount == 0)
+            return;
+
+        if (moneyType == 4)
+        {
+            Data.Vigor = Math.Min(uint.MaxValue - Data.Vigor, amount) + Data.Vigor;
+            sync.Core[(uint)PlayerCoreAttribute.Vigor] = Data.Vigor;
+            return;
+        }
+
+        var sid = checked(moneyType * 2 + 1);
+        var attr = Data.Attrs.FirstOrDefault(x => x.Gid == 1 && x.Sid == sid);
+        if (attr == null)
+        {
+            attr = new PlayerAttr { Gid = 1, Sid = sid };
+            Data.Attrs.Add(attr);
+        }
+
+        attr.Val = Math.Min(uint.MaxValue - attr.Val, amount) + attr.Val;
+        sync.Custom[ToPackedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
+        sync.Custom[ToShiftedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
+        if (moneyType == 1)
+        {
+            foreach (var (key, value) in BuildMoneySync())
+                sync.Money[key] = value;
+        }
     }
 
     private uint GetAttrValue(uint gid, uint sid)

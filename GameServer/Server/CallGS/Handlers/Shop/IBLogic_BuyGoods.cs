@@ -312,7 +312,7 @@ public class IBLogic_BuyGoods : ICallGSHandler
 
     private static BaseGameItemInfo? AddOtherItem(InventoryData inventory, uint genre, uint detail, uint particular, uint level, uint count)
     {
-        var templateId = (uint)GameResourceTemplateId.FromGdpl(genre, detail, particular, level);
+        var templateId = GameResourceTemplateId.FromGdpl(genre, detail, particular, level);
         if (!GameData.OtherItemData.TryGetValue(templateId, out var otherItem))
             return null;
 
@@ -337,7 +337,7 @@ public class IBLogic_BuyGoods : ICallGSHandler
 
     private static bool TryGrantCashBox(PlayerInstance player, NtfSyncPlayer sync, uint detail, uint particular, uint level, uint count)
     {
-        var templateId = (uint)GameResourceTemplateId.FromGdpl((uint)ItemTypeEnum.TYPE_USEABLE, detail, particular, level);
+        var templateId = GameResourceTemplateId.FromGdpl((uint)ItemTypeEnum.TYPE_USEABLE, detail, particular, level);
         if (!GameData.OtherItemData.TryGetValue(templateId, out var otherItem))
             return false;
 

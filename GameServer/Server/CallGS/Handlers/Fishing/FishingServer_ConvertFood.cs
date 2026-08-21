@@ -194,7 +194,7 @@ public class FishingServer_ConvertFood : ICallGSHandler
 
     private static BaseGameItemInfo? AddOtherItem(InventoryData inventory, uint detail, uint particular, uint level, uint count)
     {
-        var templateId = (uint)GameResourceTemplateId.FromGdpl((uint)ItemTypeEnum.TYPE_USEABLE, detail, particular, level);
+        var templateId = GameResourceTemplateId.FromGdpl((uint)ItemTypeEnum.TYPE_USEABLE, detail, particular, level);
         if (!GameData.OtherItemData.TryGetValue(templateId, out var otherItem))
             return null;
 
