@@ -403,6 +403,7 @@ public class PlayerInstance(PlayerGameData data)
 
     public void BuildPlayerAttr(bool additional = false)
     {
+        QuestManager.MigrateChapterStarAwardMasks();
         QuestManager.RemoveLegacyLevelUnlocks();
 
         var bootstrapAttrs = BuildLobbyBootstrapAttrs().ToList();

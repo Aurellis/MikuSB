@@ -26,7 +26,10 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
     private const uint LevelPassGroupId = 22;
     private const uint SettlementSeedGroupId = 23;
     private const uint ChapterStarAwardGroupId = 20;
+    private const uint ChapterStarAwardMaskVersionSid = 0;
+    private const uint ChapterStarAwardMaskVersion = 1;
     private const uint LevelStarMask = 0b111;
+    private const int MaxChapterStarAwardIndex = 31;
     private const uint LegacyUnlockedLevelPassTime = 1_700_000_000;
     private static readonly Logger Logger = new("Quest");
     private readonly SemaphoreSlim settlementLock = new(1, 1);
@@ -50,6 +53,33 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
             if (stateAttr != null)
                 Player.Data.Attrs.Remove(stateAttr);
         }
+    }
+
+    public void MigrateChapterStarAwardMasks()
+    {
+        var versionAttr = Player.Data.Attrs.FirstOrDefault(x =>
+            x.Gid == ChapterStarAwardGroupId && x.Sid == ChapterStarAwardMaskVersionSid);
+        if (versionAttr?.Val >= ChapterStarAwardMaskVersion)
+            return;
+
+        foreach (var attr in Player.Data.Attrs.Where(x =>
+                     x.Gid == ChapterStarAwardGroupId && x.Sid != ChapterStarAwardMaskVersionSid))
+        {
+            attr.Val <<= 1;
+        }
+
+        if (versionAttr == null)
+        {
+            versionAttr = new PlayerAttr
+            {
+                Gid = ChapterStarAwardGroupId,
+                Sid = ChapterStarAwardMaskVersionSid
+            };
+            Player.Data.Attrs.Add(versionAttr);
+        }
+
+        versionAttr.Val = ChapterStarAwardMaskVersion;
+        DatabaseHelper.SaveDatabaseType(Player.Data);
     }
 
     public async ValueTask<QuestSettlementResult?> SettleLevelAsync(
@@ -229,24 +259,25 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
 
             if (awardIndex == -1)
             {
-                for (var i = 0; i < awards.Count && i < 32; i++)
+                for (var i = 0; i < awards.Count && i < MaxChapterStarAwardIndex; i++)
                 {
-                    var claimBit = 1u << i;
+                    var index = i + 1;
+                    var claimBit = 1u << index;
                     if ((claimedAttr.Val & claimBit) == 0 && starCount >= awards[i].RequiredStars)
-                        selected.Add((i, awards[i]));
+                        selected.Add((index, awards[i]));
                 }
             }
             else
             {
-                if (awardIndex < 1 || awardIndex > awards.Count || awardIndex > 32)
+                if (awardIndex < 1 || awardIndex > awards.Count || awardIndex > MaxChapterStarAwardIndex)
                     return null;
 
                 var index = awardIndex - 1;
-                var claimBit = 1u << index;
+                var claimBit = 1u << awardIndex;
                 if ((claimedAttr.Val & claimBit) != 0 || starCount < awards[index].RequiredStars)
                     return null;
 
-                selected.Add((index, awards[index]));
+                selected.Add((awardIndex, awards[index]));
             }
 
             if (selected.Count == 0)
