@@ -4,6 +4,8 @@ using MikuSB.Proto;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using MikuSB.Data;
+
 namespace MikuSB.GameServer.Server.CallGS.Handlers.Shop;
 
 [CallGSApi("IBLogic_GoodsRedDot")]

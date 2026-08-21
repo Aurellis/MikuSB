@@ -3,6 +3,8 @@ using MikuSB.GameServer.Game.Player;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using MikuSB.Data;
+
 namespace MikuSB.GameServer.Server.CallGS.Handlers.Rogue3D;
 
 // Selects the Rogue3D season talent and persists it as player attribute (GroupId=124, TalentId=1007).

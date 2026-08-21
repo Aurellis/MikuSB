@@ -1,6 +1,8 @@
 using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 
+using MikuSB.Data;
+
 namespace MikuSB.GameServer.Server.CallGS.Handlers.VirCapture;
 
 internal static class VirCaptureStateHelper

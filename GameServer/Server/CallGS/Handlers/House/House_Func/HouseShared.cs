@@ -3,6 +3,8 @@ using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Text.Json.Nodes;
 
+using MikuSB.Data;
+
 namespace MikuSB.GameServer.Server.CallGS.Handlers.House;
 
 internal static class HouseRequestScript

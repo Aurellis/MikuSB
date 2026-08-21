@@ -13,8 +13,7 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Girl;
 public class GirlCard_UpdateLevel : ICallGSHandler
 {
     private const uint CashGroupId = AttrIds.CurrencyGid;
-    private const uint SilverMoneyType = 3;
-    private const uint SilverSid = SilverMoneyType * 2 + 1;
+    private static readonly uint SilverSid = AttrIds.Currency.GetSid(AttrIds.Currency.Silver);
     private const uint RoleMaxLevel = 80;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)

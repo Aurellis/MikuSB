@@ -126,7 +126,7 @@ public class FishingServer_ConvertFood : ICallGSHandler
 
         var moneyType = baitNum[0];
         var need = checked(baitNum[1] * multiplier);
-        var sid = moneyType * 2 + 1;
+        var sid = AttrIds.Currency.GetSid(moneyType);
         return attributes.GetValue(CashGroupId, sid) >= need;
     }
 
@@ -136,7 +136,7 @@ public class FishingServer_ConvertFood : ICallGSHandler
             return;
 
         var moneyType = baitNum[0];
-        var sid = moneyType * 2 + 1;
+        var sid = AttrIds.Currency.GetSid(moneyType);
         var need = checked(baitNum[1] * multiplier);
         var attr = player.Attributes.GetOrCreate(CashGroupId, sid);
         attr.Val -= need;

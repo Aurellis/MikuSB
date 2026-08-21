@@ -275,7 +275,9 @@ public class PlayerInstance(PlayerGameData data)
 
     public Dictionary<string, int> BuildMoneySync()
     {
-        var currentMoney = (int)Math.Min(int.MaxValue, GetAttrValue(1, 3));
+        var currentMoney = (int)Math.Min(
+            int.MaxValue,
+            GetAttrValue(AttrIds.Currency.GroupId, AttrIds.Currency.GetSid(AttrIds.Currency.Money)));
         var sync = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             ["."] = currentMoney,
@@ -329,17 +331,17 @@ public class PlayerInstance(PlayerGameData data)
         if (amount == 0)
             return;
 
-        if (moneyType == 4)
+        if (moneyType == AttrIds.Currency.Vigor)
         {
             Data.Vigor = Math.Min(uint.MaxValue - Data.Vigor, amount) + Data.Vigor;
             sync.Core[(uint)PlayerCoreAttribute.Vigor] = Data.Vigor;
             return;
         }
 
-        var sid = checked(moneyType * 2 + 1);
-        var attr = Attributes.Add(1, sid, amount);
+        var sid = AttrIds.Currency.GetSid(moneyType);
+        var attr = Attributes.Add(AttrIds.Currency.GroupId, sid, amount);
         Attributes.SyncTo(sync, attr);
-        if (moneyType == 1)
+        if (moneyType == AttrIds.Currency.Money)
         {
             foreach (var (key, value) in BuildMoneySync())
                 sync.Money[key] = value;

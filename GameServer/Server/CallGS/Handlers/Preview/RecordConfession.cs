@@ -5,6 +5,8 @@ using MikuSB.Proto;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using MikuSB.Data;
+
 namespace MikuSB.GameServer.Server.CallGS.Handlers.Preview;
 
 [CallGSApi("RecordConfession")]

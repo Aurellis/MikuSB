@@ -343,10 +343,10 @@ public class IBLogic_BuyGoods : ICallGSHandler
 
         uint moneyType = otherItem.LuaType switch
         {
-            "money_box" => 1,
-            "gold_box" => 2,
-            "silver_box" => 3,
-            "vigor_box" => 4,
+            "money_box" => AttrIds.Currency.Money,
+            "gold_box" => AttrIds.Currency.Gold,
+            "silver_box" => AttrIds.Currency.Silver,
+            "vigor_box" => AttrIds.Currency.Vigor,
             _ => 0
         };
 
@@ -354,11 +354,11 @@ public class IBLogic_BuyGoods : ICallGSHandler
             return false;
 
         var amount = checked(otherItem.Param1 * count);
-        var sid = moneyType * 2 + 1;
+        var sid = AttrIds.Currency.GetSid(moneyType);
         var attr = player.Attributes.GetOrCreate(CashGroupId, sid);
         attr.Val += amount;
         player.Attributes.SyncTo(sync, attr);
-        if (moneyType == 1)
+        if (moneyType == AttrIds.Currency.Money)
         {
             foreach (var (key, value) in player.BuildMoneySync())
                 sync.Money[key] = value;

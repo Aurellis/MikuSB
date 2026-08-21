@@ -336,16 +336,16 @@ public sealed class RewardManager(PlayerInstance player) : BasePlayerManager(pla
         switch (otherItem.LuaType)
         {
             case "money_box":
-                Player.AddCurrency(1, Multiply(otherItem.Param1, reward.Count), sync);
+                Player.AddCurrency(AttrIds.Currency.Money, Multiply(otherItem.Param1, reward.Count), sync);
                 return true;
             case "gold_box":
-                Player.AddCurrency(2, Multiply(otherItem.Param1, reward.Count), sync);
+                Player.AddCurrency(AttrIds.Currency.Gold, Multiply(otherItem.Param1, reward.Count), sync);
                 return true;
             case "silver_box":
-                Player.AddCurrency(3, Multiply(otherItem.Param1, reward.Count), sync);
+                Player.AddCurrency(AttrIds.Currency.Silver, Multiply(otherItem.Param1, reward.Count), sync);
                 return true;
             case "vigor_box":
-                Player.AddCurrency(4, Multiply(otherItem.Param1, reward.Count), sync);
+                Player.AddCurrency(AttrIds.Currency.Vigor, Multiply(otherItem.Param1, reward.Count), sync);
                 return true;
             case "playerexp_box":
             {
