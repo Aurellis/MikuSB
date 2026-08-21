@@ -69,11 +69,8 @@ public sealed class RewardManager(PlayerInstance player) : BasePlayerManager(pla
         sync.Core[(uint)PlayerCoreAttribute.Exp] = (uint)Math.Max(0, Player.Data.Exp);
         sync.Core[(uint)PlayerCoreAttribute.Vigor] = Player.Data.Vigor;
 
-        foreach (var attr in Player.Data.Attrs)
-        {
-            sync.Custom[Player.ToPackedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
-            sync.Custom[Player.ToShiftedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
-        }
+        foreach (var attr in Player.Attributes.All)
+            Player.Attributes.SyncTo(sync, attr);
 
         foreach (var item in Player.CharacterManager.CharacterData.Characters)
             sync.Items.Add(item.ToProto());

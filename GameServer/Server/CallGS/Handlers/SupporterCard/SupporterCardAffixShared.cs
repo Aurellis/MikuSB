@@ -2,8 +2,8 @@ using MikuSB.Data;
 using MikuSB.Data.Excel;
 using MikuSB.Database;
 using MikuSB.Database.Inventory;
-using MikuSB.Database.Player;
 using MikuSB.GameServer.Game.Support;
+using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Text.Json.Serialization;
 
@@ -11,8 +11,8 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.SupporterCard;
 
 internal static class SupporterCardAffixShared
 {
-    public const uint BaseGid = 150;
-    public const uint FixedResetSid = 1;
+    public const uint BaseGid = AttrIds.SupporterCard.Gid;
+    public const uint FixedResetSid = AttrIds.SupporterCard.FixedResetSid;
 
     public static SupportCardExcel? GetExcel(GameSupportCardInfo card)
     {
@@ -71,24 +71,12 @@ internal static class SupporterCardAffixShared
         });
     }
 
-    public static PlayerAttr GetOrCreateAttr(PlayerGameData data, uint gid, uint sid)
-    {
-        var attr = data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new PlayerAttr { Gid = gid, Sid = sid, Val = 0 };
-        data.Attrs.Add(attr);
-        return attr;
-    }
-
     public static void SetAttr(Connection connection, NtfSyncPlayer sync, uint gid, uint sid, uint value)
     {
         var player = connection.Player!;
-        var attr = GetOrCreateAttr(player.Data, gid, sid);
+        var attr = player.Attributes.Set(gid, sid, value);
         attr.Val = value;
-        sync.Custom[player.ToPackedAttrKey(gid, sid)] = value;
-        sync.Custom[player.ToShiftedAttrKey(gid, sid)] = value;
+        player.Attributes.SyncTo(sync, attr);
     }
 
     public static IEnumerable<uint> GetActiveAffixIds(GameSupportCardInfo card, params int[] ignoreSlots)

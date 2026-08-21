@@ -1,8 +1,8 @@
 using MikuSB.Data;
 using MikuSB.Database;
 using MikuSB.Database.Inventory;
-using MikuSB.Database.Player;
 using MikuSB.Enums.Item;
+using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,7 +12,7 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Girl;
 [CallGSApi("GirlCard_UpdateLevel")]
 public class GirlCard_UpdateLevel : ICallGSHandler
 {
-    private const uint CashGroupId = 1;
+    private const uint CashGroupId = AttrIds.CurrencyGid;
     private const uint SilverMoneyType = 3;
     private const uint SilverSid = SilverMoneyType * 2 + 1;
     private const uint RoleMaxLevel = 80;
@@ -90,7 +90,7 @@ public class GirlCard_UpdateLevel : ICallGSHandler
             totalSilverCost += (ulong)supplies.ConsumeGold * count;
         }
 
-        var silverAttr = GetOrCreateAttr(player.Data, CashGroupId, SilverSid);
+        var silverAttr = player.Attributes.GetOrCreate(CashGroupId, SilverSid);
         if ((ulong)silverAttr.Val < totalSilverCost)
         {
             await CallGSRouter.SendScript(connection, "GirlCard_UpdateLevel", "{\"sErr\":\"tip.material_not_enough\"}");
@@ -127,26 +127,9 @@ public class GirlCard_UpdateLevel : ICallGSHandler
 
         var sync = new NtfSyncPlayer();
         sync.Items.AddRange(syncItems);
-        sync.Custom[player.ToPackedAttrKey(CashGroupId, SilverSid)] = silverAttr.Val;
-        sync.Custom[player.ToShiftedAttrKey(CashGroupId, SilverSid)] = silverAttr.Val;
+        player.Attributes.SyncTo(sync, silverAttr);
 
         await CallGSRouter.SendScript(connection, "GirlCard_UpdateLevel", "null", sync);
-    }
-
-    private static PlayerAttr GetOrCreateAttr(PlayerGameData data, uint gid, uint sid)
-    {
-        var attr = data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new PlayerAttr
-        {
-            Gid = gid,
-            Sid = sid,
-            Val = 0
-        };
-        data.Attrs.Add(attr);
-        return attr;
     }
 
     private static Item BuildRemovedProto(BaseGameItemInfo item)

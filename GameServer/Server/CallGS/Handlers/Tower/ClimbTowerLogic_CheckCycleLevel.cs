@@ -10,8 +10,8 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Tower;
 [CallGSApi("ClimbTowerLogic_CheckCycleLevel")]
 public class ClimbTowerLogic_CheckCycleLevel : ICallGSHandler
 {
-    private const uint TowerGroupId = 3;
-    private const uint TimeSubId = 1;
+    private const uint TowerGroupId = AttrIds.Tower.Gid;
+    private const uint TimeSubId = AttrIds.Tower.TimeSid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -23,12 +23,13 @@ public class ClimbTowerLogic_CheckCycleLevel : ICallGSHandler
             return;
         }
 
-        var currentTimeId = GetAttr(player.Data, TowerGroupId, TimeSubId);
+        var currentTimeId = player.Attributes.GetValue(TowerGroupId, TimeSubId);
         var sync = new NtfSyncPlayer();
         if (currentTimeId != current.ID)
         {
             ResetTowerAttrs(player, sync);
-            SetAttr(player.Data, TowerGroupId, TimeSubId, current.ID, sync, player);
+            var timeAttr = player.Attributes.Set(TowerGroupId, TimeSubId, current.ID);
+            player.Attributes.SyncTo(sync, timeAttr);
             DatabaseHelper.SaveDatabaseType(player.Data);
         }
 
@@ -78,41 +79,15 @@ public class ClimbTowerLogic_CheckCycleLevel : ICallGSHandler
             : null;
     }
 
-    private static uint GetAttr(PlayerGameData data, uint gid, uint sid)
-    {
-        return data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid)?.Val ?? 0;
-    }
-
     private static void ResetTowerAttrs(PlayerInstance player, NtfSyncPlayer sync)
     {
-        var towerAttrs = player.Data.Attrs
+        var towerAttrs = player.Attributes.All
             .Where(x => x.Gid == TowerGroupId)
             .ToList();
 
         foreach (var attr in towerAttrs)
-        {
-            sync.Custom[player.ToPackedAttrKey(attr.Gid, attr.Sid)] = 0;
-            sync.Custom[player.ToShiftedAttrKey(attr.Gid, attr.Sid)] = 0;
-        }
+            player.Attributes.SyncTo(sync, attr.Gid, attr.Sid, 0);
 
-        player.Data.Attrs.RemoveAll(x => x.Gid == TowerGroupId);
-    }
-
-    private static void SetAttr(PlayerGameData data, uint gid, uint sid, uint value, NtfSyncPlayer sync, PlayerInstance player)
-    {
-        var attr = data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
-        if (attr == null)
-        {
-            attr = new PlayerAttr
-            {
-                Gid = gid,
-                Sid = sid
-            };
-            data.Attrs.Add(attr);
-        }
-
-        attr.Val = value;
-        sync.Custom[player.ToPackedAttrKey(gid, sid)] = value;
-        sync.Custom[player.ToShiftedAttrKey(gid, sid)] = value;
+        player.Attributes.RemoveWhere(x => x.Gid == TowerGroupId);
     }
 }

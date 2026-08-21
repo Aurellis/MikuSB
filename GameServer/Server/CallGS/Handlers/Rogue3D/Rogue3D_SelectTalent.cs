@@ -1,5 +1,5 @@
-using MikuSB.Database.Player;
 using MikuSB.Proto;
+using MikuSB.GameServer.Game.Player;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -11,8 +11,8 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Rogue3D;
 [CallGSApi("Rogue3D_SelectTalent")]
 public class Rogue3D_SelectTalent : ICallGSHandler
 {
-    private const uint GroupId = 124;
-    private const uint TalentIdSid = 7;
+    private const uint GroupId = AttrIds.Rogue3D.Gid;
+    private const uint TalentIdSid = AttrIds.Rogue3D.TalentIdSid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -24,17 +24,11 @@ public class Rogue3D_SelectTalent : ICallGSHandler
         }
 
         var player = connection.Player!;
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == TalentIdSid);
-        if (attr == null)
-        {
-            attr = new PlayerAttr { Gid = GroupId, Sid = TalentIdSid };
-            player.Data.Attrs.Add(attr);
-        }
+        var attr = player.Attributes.GetOrCreate(GroupId, TalentIdSid);
         attr.Val = req.TalentId;
 
         var sync = new NtfSyncPlayer();
-        sync.Custom[player.ToPackedAttrKey(GroupId, TalentIdSid)] = attr.Val;
-        sync.Custom[player.ToShiftedAttrKey(GroupId, TalentIdSid)] = attr.Val;
+        player.Attributes.SyncTo(sync, attr);
 
         await CallGSRouter.SendScript(connection, "Rogue3D_SelectTalent", "{}", sync);
     }

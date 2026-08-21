@@ -1,4 +1,5 @@
 using MikuSB.Proto;
+using MikuSB.GameServer.Game.Player;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -7,7 +8,7 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Misc;
 [CallGSApi("SettingChange")]
 public class SettingChange : ICallGSHandler
 {
-    private const uint PlayerSettingGid = 44;
+    private const uint PlayerSettingGid = AttrIds.Settings.Gid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -17,14 +18,12 @@ public class SettingChange : ICallGSHandler
 
         foreach (var change in changes)
         {
-            var value = player.Data.StrAttrs
-                .FirstOrDefault(x => x.Gid == PlayerSettingGid && x.Sid == change.Id)?
-                .Val;
+            var value = player.Attributes.GetStringValue(PlayerSettingGid, change.Id);
 
             if (value == null)
                 continue;
 
-            sync.CustomStr[player.ToShiftedAttrKey(PlayerSettingGid, change.Id)] = value;
+            player.Attributes.SyncTo(sync, player.Attributes.GetString(PlayerSettingGid, change.Id)!);
         }
 
         if (sync.CustomStr.Count > 0)

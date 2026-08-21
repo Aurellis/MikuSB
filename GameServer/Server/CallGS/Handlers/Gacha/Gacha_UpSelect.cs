@@ -1,6 +1,7 @@
 using MikuSB.Data;
 using MikuSB.Database;
 using MikuSB.Proto;
+using MikuSB.GameServer.Game.Player;
 using Newtonsoft.Json.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -10,7 +11,7 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Gacha;
 [CallGSApi("Gacha_UpSelect")]
 public class Gacha_UpSelect : ICallGSHandler
 {
-    private const uint GachaStrGid = 42;
+    private const uint GachaStrGid = AttrIds.Gacha.StringGid;
     private const int UpSelectIndex = 0;
     private const int UpSelectGetFlagIndex = 1;
     private const int UpPickPoolIndex = 2;
@@ -48,7 +49,7 @@ public class Gacha_UpSelect : ICallGSHandler
             return;
         }
 
-        var existing = player.Data.StrAttrs.FirstOrDefault(x => x.Gid == GachaStrGid && x.Sid == (uint)req.NId)?.Val;
+        var existing = player.Attributes.GetStringValue(GachaStrGid, (uint)req.NId);
         var state = string.IsNullOrWhiteSpace(existing) ? new JArray() : JArray.Parse(existing);
 
         EnsureArraySize(state, 3);
@@ -57,11 +58,14 @@ public class Gacha_UpSelect : ICallGSHandler
         if (state[UpPickPoolIndex] == null)
             state[UpPickPoolIndex] = 0;
 
-        player.SetStrAttr(GachaStrGid, (uint)req.NId, state.ToString(Newtonsoft.Json.Formatting.None));
+        var attr = player.Attributes.SetString(
+            GachaStrGid,
+            (uint)req.NId,
+            state.ToString(Newtonsoft.Json.Formatting.None));
         DatabaseHelper.SaveDatabaseType(player.Data);
 
         var sync = new NtfSyncPlayer();
-        sync.CustomStr[player.ToShiftedAttrKey(GachaStrGid, (uint)req.NId)] = state.ToString(Newtonsoft.Json.Formatting.None);
+        player.Attributes.SyncTo(sync, attr);
         await CallGSRouter.SendScript(connection, "Gacha_UpSelect", "{}", sync);
     }
 

@@ -1,6 +1,5 @@
 using MikuSB.Data;
 using MikuSB.Data.Excel;
-using MikuSB.Database.Player;
 using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Globalization;
@@ -12,10 +11,10 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.VirCapture;
 [CallGSApi("VirCaptureLevel_EnterLevel")]
 public class VirCaptureLevel_EnterLevel : ICallGSHandler
 {
-    private const uint GroupId = 128;
-    private const uint MapDataStart = 10000;
+    private const uint GroupId = AttrIds.VirCapture.Gid;
+    private const uint MapDataStart = AttrIds.VirCapture.MapDataStartSid;
     private const uint MaxMapCount = 3;
-    private const uint MaxMapDataLen = 3000;
+    private const uint MaxMapDataLen = AttrIds.VirCapture.MaxMapDataLength;
     private const uint OffMapId = 1;
     private const uint OffDayNight = 7;
     private const uint OffMapLevel = 8;
@@ -77,7 +76,7 @@ public class VirCaptureLevel_EnterLevel : ICallGSHandler
         for (uint i = 0; i < MaxMapCount; i++)
         {
             var slotStart = MapDataStart + (i * MaxMapDataLen);
-            var mapIdAttr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == slotStart + OffMapId);
+            var mapIdAttr = player.Attributes.Get(GroupId, slotStart + OffMapId);
             if (mapIdAttr?.Val == levelId)
                 return slotStart;
 
@@ -90,31 +89,19 @@ public class VirCaptureLevel_EnterLevel : ICallGSHandler
 
     private static void EnsureMapAttr(PlayerInstance player, uint sid, uint minValue, NtfSyncPlayer sync)
     {
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == sid);
+        var attr = player.Attributes.Get(GroupId, sid);
         if (attr == null)
         {
-            attr = new PlayerAttr
-            {
-                Gid = GroupId,
-                Sid = sid,
-                Val = minValue
-            };
-            player.Data.Attrs.Add(attr);
-            SyncAttr(player, sync, sid, minValue);
+            attr = player.Attributes.Set(GroupId, sid, minValue);
+            player.Attributes.SyncTo(sync, attr);
             return;
         }
 
         if (attr.Val < minValue)
         {
             attr.Val = minValue;
-            SyncAttr(player, sync, sid, attr.Val);
+            player.Attributes.SyncTo(sync, attr);
         }
-    }
-
-    private static void SyncAttr(PlayerInstance player, NtfSyncPlayer sync, uint sid, uint value)
-    {
-        sync.Custom[player.ToPackedAttrKey(GroupId, sid)] = value;
-        sync.Custom[player.ToShiftedAttrKey(GroupId, sid)] = value;
     }
 
     private static VirCaptureTimeExcel? ResolveCurrent(IEnumerable<VirCaptureTimeExcel> configs, DateTime now)

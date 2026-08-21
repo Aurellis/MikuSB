@@ -49,7 +49,8 @@ public class SupporterCard_ResetInitialAffix : ICallGSHandler
         SupportAffixStateService.SetAffix(card, SupportAffixStateService.PendingInitialAffixSlot, affixId, tier);
         card.AffixId = (uint)req.Index;
 
-        var attr = SupporterCardAffixShared.GetOrCreateAttr(connection.Player!.Data, SupporterCardAffixShared.BaseGid, SupporterCardAffixShared.FixedResetSid);
+        var player = connection.Player!;
+        var attr = player.Attributes.GetOrCreate(SupporterCardAffixShared.BaseGid, SupporterCardAffixShared.FixedResetSid);
         attr.Val += 1;
         SupporterCardAffixShared.SetAttr(connection, sync, SupporterCardAffixShared.BaseGid, SupporterCardAffixShared.FixedResetSid, attr.Val);
 

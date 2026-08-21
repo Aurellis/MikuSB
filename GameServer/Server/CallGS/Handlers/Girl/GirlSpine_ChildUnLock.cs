@@ -1,6 +1,6 @@
 using MikuSB.Data;
 using MikuSB.Database;
-using MikuSB.Database.Player;
+using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,7 +12,7 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Girl;
 [CallGSApi("GirlSpine_ChildUnLock")]
 public class GirlSpine_ChildUnLock : ICallGSHandler
 {
-    private const uint SpineStrAttrGid = 30;
+    private const uint SpineStrAttrGid = AttrIds.Girl.SpineStringGid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -101,14 +101,14 @@ public class GirlSpine_ChildUnLock : ICallGSHandler
         var cardParticular = (uint)((card.TemplateId >> 32) & 0xFFFF);
 
         // Build and persist StrAttr JSON: { "<particular>": { "ns": mastIdx, "tbn": [0,0], "tbr": [] } }
-        UpdateSpineStrAttr(player.Data, cardDetail, cardParticular, mastIdx);
+        UpdateSpineStrAttr(player, cardDetail, cardParticular, mastIdx);
 
         DatabaseHelper.SaveDatabaseType(player.InventoryManager.InventoryData);
         DatabaseHelper.SaveDatabaseType(player.CharacterManager.CharacterData);
         DatabaseHelper.SaveDatabaseType(player.Data);
 
         // Send NtfSetStrAttr so client's GetStrAttribute(30, Detail) returns fresh data
-        var strAttrData = GetSpineStrAttrJson(player.Data, cardDetail);
+        var strAttrData = GetSpineStrAttrJson(player, cardDetail);
         var ntfStrAttr = new NtfSetStrAttr { Gid = SpineStrAttrGid, Sid = cardDetail, Val = strAttrData };
         await connection.Player!.SendPacket(CmdIds.NtfSetStrAttr, ntfStrAttr);
 
@@ -119,16 +119,12 @@ public class GirlSpine_ChildUnLock : ICallGSHandler
         await CallGSRouter.SendScript(connection, "GirlSpine_ChildUnLock", rsp, sync);
     }
 
-    private static void UpdateSpineStrAttr(PlayerGameData data, uint detail, uint particular, int mastIdx)
+    private static void UpdateSpineStrAttr(PlayerInstance player, uint detail, uint particular, int mastIdx)
     {
-        var existing = data.StrAttrs.FirstOrDefault(x => x.Gid == SpineStrAttrGid && x.Sid == detail);
-        if (existing == null)
-        {
-            existing = new PlayerStrAttr { Gid = SpineStrAttrGid, Sid = detail, Val = "{}" };
-            data.StrAttrs.Add(existing);
-        }
+        var existing = player.Attributes.GetString(SpineStrAttrGid, detail);
+        var raw = existing?.Val ?? "{}";
 
-        var root = JsonSerializer.Deserialize<Dictionary<string, SpineStrData>>(existing.Val)
+        var root = JsonSerializer.Deserialize<Dictionary<string, SpineStrData>>(raw)
                    ?? new Dictionary<string, SpineStrData>();
 
         var key = particular.ToString();
@@ -138,12 +134,12 @@ public class GirlSpine_ChildUnLock : ICallGSHandler
         entry.Ns = mastIdx;
         root[key] = entry;
 
-        existing.Val = JsonSerializer.Serialize(root);
+        player.Attributes.SetString(SpineStrAttrGid, detail, JsonSerializer.Serialize(root));
     }
 
-    private static string GetSpineStrAttrJson(PlayerGameData data, uint detail)
+    private static string GetSpineStrAttrJson(PlayerInstance player, uint detail)
     {
-        var existing = data.StrAttrs.FirstOrDefault(x => x.Gid == SpineStrAttrGid && x.Sid == detail);
+        var existing = player.Attributes.GetString(SpineStrAttrGid, detail);
         return existing?.Val ?? "{}";
     }
 }

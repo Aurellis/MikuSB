@@ -1,5 +1,4 @@
 using MikuSB.Data;
-using MikuSB.Database.Player;
 using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Text.Json;
@@ -14,9 +13,9 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Rogue3D;
 [CallGSApi("Rogue3D_EnterSeasonLevel")]
 public class Rogue3D_EnterSeasonLevel : ICallGSHandler
 {
-    private const uint GroupId = 124;
-    private const uint SeasonGameplayIdSid = 1006;
-    private const uint SeasonEnterFlagSid = 1008;
+    private const uint GroupId = AttrIds.Rogue3D.Gid;
+    private const uint SeasonGameplayIdSid = AttrIds.Rogue3D.SeasonGameplayIdSid;
+    private const uint SeasonEnterFlagSid = AttrIds.Rogue3D.SeasonEnterFlagSid;
     private static readonly Random Random = new();
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
@@ -46,12 +45,7 @@ public class Rogue3D_EnterSeasonLevel : ICallGSHandler
 
     private static void SetAttr(PlayerInstance player, uint sid, uint val, NtfSyncPlayer sync)
     {
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == sid);
-        if (attr == null)
-        {
-            attr = new PlayerAttr { Gid = GroupId, Sid = sid };
-            player.Data.Attrs.Add(attr);
-        }
+        var attr = player.Attributes.GetOrCreate(GroupId, sid);
 
         if (attr.Val == val)
         {
@@ -59,8 +53,7 @@ public class Rogue3D_EnterSeasonLevel : ICallGSHandler
         }
 
         attr.Val = val;
-        sync.Custom[player.ToPackedAttrKey(GroupId, sid)] = val;
-        sync.Custom[player.ToShiftedAttrKey(GroupId, sid)] = val;
+        player.Attributes.SyncTo(sync, attr);
     }
 }
 

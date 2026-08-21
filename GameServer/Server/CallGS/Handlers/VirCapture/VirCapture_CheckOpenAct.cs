@@ -1,6 +1,5 @@
 using MikuSB.Data;
 using MikuSB.Data.Excel;
-using MikuSB.Database.Player;
 using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Globalization;
@@ -11,11 +10,11 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.VirCapture;
 [CallGSApi("VirCapture_CheckOpenAct")]
 public class VirCapture_CheckOpenAct : ICallGSHandler
 {
-    private const uint GroupId = 128;
-    private const uint ActIdSid = 1;
-    private const uint CurLevelSid = 3;
-    private const uint TrialActIdSid = 6;
-    private const uint SeasonActIdSid = 9;
+    private const uint GroupId = AttrIds.VirCapture.Gid;
+    private const uint ActIdSid = AttrIds.VirCapture.ActivitySid;
+    private const uint CurLevelSid = AttrIds.VirCapture.CurrentLevelSid;
+    private const uint TrialActIdSid = AttrIds.VirCapture.TrialActIdSid;
+    private const uint SeasonActIdSid = AttrIds.VirCapture.SeasonActIdSid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -123,42 +122,22 @@ public class VirCapture_CheckOpenAct : ICallGSHandler
 
     private static void EnsureMinAttr(PlayerInstance player, uint sid, uint minValue, NtfSyncPlayer sync)
     {
-        var attr = GetOrCreateAttr(player, sid);
+        var attr = player.Attributes.GetOrCreate(GroupId, sid);
         if (attr.Val < minValue)
         {
             attr.Val = minValue;
-            SyncAttr(player, sync, sid, attr.Val);
+            player.Attributes.SyncTo(sync, attr);
         }
     }
 
     private static void SetAttr(PlayerInstance player, uint sid, uint value, NtfSyncPlayer sync)
     {
-        var attr = GetOrCreateAttr(player, sid);
+        var attr = player.Attributes.GetOrCreate(GroupId, sid);
         if (attr.Val != value)
         {
             attr.Val = value;
-            SyncAttr(player, sync, sid, value);
+            player.Attributes.SyncTo(sync, attr);
         }
     }
 
-    private static PlayerAttr GetOrCreateAttr(PlayerInstance player, uint sid)
-    {
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new PlayerAttr
-        {
-            Gid = GroupId,
-            Sid = sid
-        };
-        player.Data.Attrs.Add(attr);
-        return attr;
-    }
-
-    private static void SyncAttr(PlayerInstance player, NtfSyncPlayer sync, uint sid, uint value)
-    {
-        sync.Custom[player.ToPackedAttrKey(GroupId, sid)] = value;
-        sync.Custom[player.ToShiftedAttrKey(GroupId, sid)] = value;
-    }
 }

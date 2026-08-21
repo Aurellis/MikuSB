@@ -1,6 +1,7 @@
 using MikuSB.Database;
 using MikuSB.Data;
 using MikuSB.Enums.Item;
+using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -11,13 +12,13 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.VirCapture;
 [CallGSApi("VirCaptureLevel_SaveCapture")]
 public class VirCaptureLevel_SaveCapture : ICallGSHandler
 {
-    private const uint VirCaptureGroupId = 128;
-    private const uint CurExpSid = 2;
-    private const uint CurLevelSid = 3;
-    private const uint BagNumSid = 5;
-    private const uint DailyExpSid = 8;
-    private const uint ColorMaxStartSid = 11;
-    private const uint RikiGroupId = 135;
+    private const uint VirCaptureGroupId = AttrIds.VirCapture.Gid;
+    private const uint CurExpSid = AttrIds.VirCapture.CurrentExpSid;
+    private const uint CurLevelSid = AttrIds.VirCapture.CurrentLevelSid;
+    private const uint BagNumSid = AttrIds.VirCapture.BagNumSid;
+    private const uint DailyExpSid = AttrIds.VirCapture.DailyExpSid;
+    private const uint ColorMaxStartSid = AttrIds.VirCapture.ColorMaxStartSid;
+    private const uint RikiGroupId = AttrIds.VirCapture.RikiGid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -83,25 +84,12 @@ public class VirCaptureLevel_SaveCapture : ICallGSHandler
             return;
 
         var colorSid = ColorMaxStartSid + Math.Max(0u, monsterCard.Color - 1u);
-        var colorAttr = player.Data.Attrs.FirstOrDefault(x => x.Gid == VirCaptureGroupId && x.Sid == colorSid);
-        var nextColorValue = (colorAttr?.Val ?? 0) + 1;
+        var nextColorValue = player.Attributes.GetValue(VirCaptureGroupId, colorSid) + 1;
         VirCaptureStateHelper.SetUnsignedAttr(player, colorSid, nextColorValue, sync);
 
-        var rikiAttr = player.Data.Attrs.FirstOrDefault(x => x.Gid == RikiGroupId && x.Sid == monsterCard.RikiId);
-        if (rikiAttr == null)
-        {
-            rikiAttr = new Database.Player.PlayerAttr
-            {
-                Gid = RikiGroupId,
-                Sid = monsterCard.RikiId,
-                Val = 0
-            };
-            player.Data.Attrs.Add(rikiAttr);
-        }
-
+        var rikiAttr = player.Attributes.GetOrCreate(RikiGroupId, monsterCard.RikiId);
         rikiAttr.Val += 1;
-        sync.Custom[player.ToPackedAttrKey(RikiGroupId, monsterCard.RikiId)] = rikiAttr.Val;
-        sync.Custom[player.ToShiftedAttrKey(RikiGroupId, monsterCard.RikiId)] = rikiAttr.Val;
+        player.Attributes.SyncTo(sync, rikiAttr);
     }
 
     private static void ApplyCaptureExp(MikuSB.GameServer.Game.Player.PlayerInstance player, ulong templateId, NtfSyncPlayer sync)
@@ -109,9 +97,9 @@ public class VirCaptureLevel_SaveCapture : ICallGSHandler
         if (!GameData.MonsterCardData.TryGetValue(templateId, out var monsterCard) || monsterCard.Exp == 0)
             return;
 
-        var curLevelAttr = GetOrCreateVirCaptureAttr(player, CurLevelSid);
-        var curExpAttr = GetOrCreateVirCaptureAttr(player, CurExpSid);
-        var dailyExpAttr = GetOrCreateVirCaptureAttr(player, DailyExpSid);
+        var curLevelAttr = player.Attributes.GetOrCreate(VirCaptureGroupId, CurLevelSid);
+        var curExpAttr = player.Attributes.GetOrCreate(VirCaptureGroupId, CurExpSid);
+        var dailyExpAttr = player.Attributes.GetOrCreate(VirCaptureGroupId, DailyExpSid);
 
         var maxLevel = GameData.VirCaptureLevelListData.Count == 0 ? 1u : GameData.VirCaptureLevelListData.Keys.Max();
         var curLevel = Math.Max(1u, curLevelAttr.Val);
@@ -155,31 +143,14 @@ public class VirCaptureLevel_SaveCapture : ICallGSHandler
         SyncVirCaptureAttr(player, CurExpSid, curExpAttr.Val, sync);
     }
 
-    private static Database.Player.PlayerAttr GetOrCreateVirCaptureAttr(MikuSB.GameServer.Game.Player.PlayerInstance player, uint sid)
-    {
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == VirCaptureGroupId && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new Database.Player.PlayerAttr
-        {
-            Gid = VirCaptureGroupId,
-            Sid = sid,
-            Val = 0
-        };
-        player.Data.Attrs.Add(attr);
-        return attr;
-    }
-
     private static void SyncVirCaptureAttr(MikuSB.GameServer.Game.Player.PlayerInstance player, uint sid, uint value, NtfSyncPlayer sync)
     {
-        sync.Custom[player.ToPackedAttrKey(VirCaptureGroupId, sid)] = value;
-        sync.Custom[player.ToShiftedAttrKey(VirCaptureGroupId, sid)] = value;
+        player.Attributes.SyncTo(sync, VirCaptureGroupId, sid, value);
     }
 
     private static MikuSB.Data.Excel.VirCaptureTimeExcel? ResolveCurrentAct(MikuSB.GameServer.Game.Player.PlayerInstance player)
     {
-        var actId = player.Data.Attrs.FirstOrDefault(x => x.Gid == VirCaptureGroupId && x.Sid == 1)?.Val ?? 0;
+        var actId = player.Attributes.GetValue(VirCaptureGroupId, 1);
         if (actId > 0 && GameData.VirCaptureTimeData.TryGetValue(actId, out var act))
             return act;
 

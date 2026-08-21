@@ -1,5 +1,6 @@
 using MikuSB.Database;
 using MikuSB.Proto;
+using MikuSB.GameServer.Game.Player;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -8,7 +9,7 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.DreamCard;
 [CallGSApi("DreamCard_UpdateData")]
 public class DreamCard_UpdateData : ICallGSHandler
 {
-    private const uint DataGroupId = 62;
+    private const uint DataGroupId = AttrIds.DreamCard.DataGid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -25,8 +26,8 @@ public class DreamCard_UpdateData : ICallGSHandler
                     continue;
 
                 var value = NormalizeJson(entry.Data);
-                player.SetStrAttr(DataGroupId, (uint)entry.Id, value);
-                sync.CustomStr[player.ToShiftedAttrKey(DataGroupId, (uint)entry.Id)] = value;
+                var attr = player.Attributes.SetString(DataGroupId, (uint)entry.Id, value);
+                player.Attributes.SyncTo(sync, attr);
                 dirty = true;
             }
         }

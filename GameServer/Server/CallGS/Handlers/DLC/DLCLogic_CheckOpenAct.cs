@@ -1,6 +1,5 @@
 using MikuSB.Data;
 using MikuSB.Data.Excel;
-using MikuSB.Database.Player;
 using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Globalization;
@@ -11,8 +10,8 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.DLC;
 [CallGSApi("DLCLogic_CheckOpenAct")]
 public class DLCLogic_CheckOpenAct : ICallGSHandler
 {
-    private const uint GroupId = 15;
-    private const uint ActIdSid = 1;
+    private const uint GroupId = AttrIds.Dlc.Gid;
+    private const uint ActIdSid = AttrIds.Dlc.ActIdSid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -86,27 +85,11 @@ public class DLCLogic_CheckOpenAct : ICallGSHandler
 
     private static void SetAttr(PlayerInstance player, uint sid, uint value, NtfSyncPlayer sync)
     {
-        var attr = GetOrCreateAttr(player, sid);
+        var attr = player.Attributes.GetOrCreate(GroupId, sid);
         if (attr.Val != value)
         {
             attr.Val = value;
-            sync.Custom[player.ToPackedAttrKey(GroupId, sid)] = value;
-            sync.Custom[player.ToShiftedAttrKey(GroupId, sid)] = value;
+            player.Attributes.SyncTo(sync, attr);
         }
-    }
-
-    private static PlayerAttr GetOrCreateAttr(PlayerInstance player, uint sid)
-    {
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new PlayerAttr
-        {
-            Gid = GroupId,
-            Sid = sid
-        };
-        player.Data.Attrs.Add(attr);
-        return attr;
     }
 }

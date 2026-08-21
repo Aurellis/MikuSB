@@ -7,10 +7,10 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Rogue3D;
 
 internal static class Rogue3DStateHelper
 {
-    private const uint GroupId = 124;
-    private const uint LevelPassStart = 20;
-    private const uint DailyBuffStart = 51;
-    private const uint DailyBuffEnd = 65;
+    private const uint GroupId = AttrIds.Rogue3D.Gid;
+    private const uint LevelPassStart = AttrIds.Rogue3D.LevelPassStartSid;
+    private const uint DailyBuffStart = AttrIds.Rogue3D.DailyBuffStartSid;
+    private const uint DailyBuffEnd = AttrIds.Rogue3D.DailyBuffEndSid;
     private const int DailyBuffBitCount = 10;
     private const int DailyBuffBitsPerValue = DailyBuffBitCount + 1;
     private const uint DailyBuffMask = (1u << DailyBuffBitCount) - 1;
@@ -134,11 +134,11 @@ internal static class Rogue3DStateHelper
 
     private static void EnsureMinAttr(PlayerInstance player, uint sid, uint value, NtfSyncPlayer sync, bool overwrite = false)
     {
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == sid);
+        var attr = player.Attributes.Get(GroupId, sid);
         if (attr == null)
         {
-            attr = new PlayerAttr { Gid = GroupId, Sid = sid, Val = value };
-            player.Data.Attrs.Add(attr);
+            attr = player.Attributes.GetOrCreate(GroupId, sid);
+            attr.Val = value;
             AddSync(player, sync, sid, value);
             return;
         }
@@ -154,12 +154,7 @@ internal static class Rogue3DStateHelper
 
     private static void SetAttr(PlayerInstance player, uint sid, uint value, NtfSyncPlayer sync)
     {
-        var attr = player.Data.Attrs.FirstOrDefault(x => x.Gid == GroupId && x.Sid == sid);
-        if (attr == null)
-        {
-            attr = new PlayerAttr { Gid = GroupId, Sid = sid };
-            player.Data.Attrs.Add(attr);
-        }
+        var attr = player.Attributes.GetOrCreate(GroupId, sid);
 
         if (attr.Val == value)
         {
@@ -172,7 +167,6 @@ internal static class Rogue3DStateHelper
 
     private static void AddSync(PlayerInstance player, NtfSyncPlayer sync, uint sid, uint value)
     {
-        sync.Custom[player.ToPackedAttrKey(GroupId, sid)] = value;
-        sync.Custom[player.ToShiftedAttrKey(GroupId, sid)] = value;
+        player.Attributes.SyncTo(sync, GroupId, sid, value);
     }
 }

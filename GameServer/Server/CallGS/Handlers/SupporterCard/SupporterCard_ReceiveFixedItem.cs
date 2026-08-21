@@ -16,7 +16,7 @@ public class SupporterCard_ReceiveFixedItem : ICallGSHandler
             return;
         }
 
-        var attr = SupporterCardAffixShared.GetOrCreateAttr(player.Data, SupporterCardAffixShared.BaseGid, SupporterCardAffixShared.FixedResetSid);
+        var attr = player.Attributes.GetOrCreate(SupporterCardAffixShared.BaseGid, SupporterCardAffixShared.FixedResetSid);
         var claimCount = attr.Val / (uint)fixedCfg.Num;
         if (claimCount == 0)
         {

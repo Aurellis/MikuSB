@@ -1,5 +1,6 @@
 ﻿using MikuSB.Database.Player;
 using MikuSB.Proto;
+using MikuSB.GameServer.Game.Player;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -9,8 +10,8 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Scene;
 [CallGSApi("ChangeMainScene")]
 public class ChangeMainScene : ICallGSHandler
 {
-    private const int MainSceneGID = 132;
-    private const int MainSceneSID = 1;
+    private const uint MainSceneGID = AttrIds.Scene.MainGid;
+    private const uint MainSceneSID = AttrIds.Scene.MainSid;
 
     public async Task Handle(Connection connection, string param, ushort seqNo)
     {
@@ -23,23 +24,11 @@ public class ChangeMainScene : ICallGSHandler
         } 
 
         var player = connection.Player!;
-        var mainSceneAttr = player.Data.Attrs
-            .FirstOrDefault(x => x.Gid == MainSceneGID && x.Sid == MainSceneSID);
-
-        if (mainSceneAttr == null)
-        {
-            mainSceneAttr = new PlayerAttr
-            {
-                Gid = MainSceneGID,
-                Sid = MainSceneSID
-            };
-            player.Data.Attrs.Add(mainSceneAttr);
-        }
+        var mainSceneAttr = player.Attributes.GetOrCreate(MainSceneGID, MainSceneSID);
         var sync = new NtfSyncPlayer();
         mainSceneAttr.Val = req.Id;
 
-        sync.Custom[player.ToPackedAttrKey(MainSceneGID, MainSceneSID)] = mainSceneAttr.Val;
-        sync.Custom[player.ToShiftedAttrKey(MainSceneGID, MainSceneSID)] = mainSceneAttr.Val;
+        player.Attributes.SyncTo(sync, mainSceneAttr);
         await CallGSRouter.SendScript(connection, "ChangeMainScene", rsp, sync);
     }
 }

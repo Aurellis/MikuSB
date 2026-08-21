@@ -3,7 +3,6 @@ using System.Text.Json.Nodes;
 using MikuSB.Data;
 using MikuSB.Data.Excel;
 using MikuSB.Database;
-using MikuSB.Database.Player;
 using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using MikuSB.Util;
@@ -22,11 +21,11 @@ public readonly record struct ChapterStarAwardResult(JsonObject Response, NtfSyn
 
 public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
 {
-    private const uint LevelStateGroupId = 21;
-    private const uint LevelPassGroupId = 22;
-    private const uint SettlementSeedGroupId = 23;
-    private const uint ChapterStarAwardGroupId = 20;
-    private const uint ChapterStarAwardMaskVersionSid = 0;
+    private const uint LevelStateGroupId = AttrIds.Quest.LevelStateGid;
+    private const uint LevelPassGroupId = AttrIds.Quest.LevelPassGid;
+    private const uint SettlementSeedGroupId = AttrIds.Quest.SettlementSeedGid;
+    private const uint ChapterStarAwardGroupId = AttrIds.Quest.ChapterStarAwardGid;
+    private const uint ChapterStarAwardMaskVersionSid = AttrIds.Quest.ChapterStarAwardMaskVersionSid;
     private const uint ChapterStarAwardMaskVersion = 1;
     private const uint LevelStarMask = 0b111;
     private const int MaxChapterStarAwardIndex = 31;
@@ -43,40 +42,34 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
 
         foreach (var levelId in levelIds)
         {
-            var passAttr = Player.Data.Attrs.FirstOrDefault(x => x.Gid == LevelPassGroupId && x.Sid == levelId);
+            var passAttr = Player.Attributes.Get(LevelPassGroupId, levelId);
             if (passAttr?.Val != LegacyUnlockedLevelPassTime)
                 continue;
 
-            Player.Data.Attrs.Remove(passAttr);
+            Player.Attributes.Remove(LevelPassGroupId, levelId);
 
-            var stateAttr = Player.Data.Attrs.FirstOrDefault(x => x.Gid == LevelStateGroupId && x.Sid == levelId);
-            if (stateAttr != null)
-                Player.Data.Attrs.Remove(stateAttr);
+            Player.Attributes.Remove(LevelStateGroupId, levelId);
         }
     }
 
     public void MigrateChapterStarAwardMasks()
     {
-        var versionAttr = Player.Data.Attrs.FirstOrDefault(x =>
-            x.Gid == ChapterStarAwardGroupId && x.Sid == ChapterStarAwardMaskVersionSid);
+        var versionAttr = Player.Attributes.Get(
+            ChapterStarAwardGroupId,
+            ChapterStarAwardMaskVersionSid);
         if (versionAttr?.Val >= ChapterStarAwardMaskVersion)
             return;
 
-        foreach (var attr in Player.Data.Attrs.Where(x =>
+        foreach (var attr in Player.Attributes.All.Where(x =>
                      x.Gid == ChapterStarAwardGroupId && x.Sid != ChapterStarAwardMaskVersionSid))
         {
             attr.Val <<= 1;
         }
 
         if (versionAttr == null)
-        {
-            versionAttr = new PlayerAttr
-            {
-                Gid = ChapterStarAwardGroupId,
-                Sid = ChapterStarAwardMaskVersionSid
-            };
-            Player.Data.Attrs.Add(versionAttr);
-        }
+            versionAttr = Player.Attributes.GetOrCreate(
+                ChapterStarAwardGroupId,
+                ChapterStarAwardMaskVersionSid);
 
         versionAttr.Val = ChapterStarAwardMaskVersion;
         DatabaseHelper.SaveDatabaseType(Player.Data);
@@ -99,9 +92,9 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         await settlementLock.WaitAsync();
         try
         {
-            var levelPass = GetOrCreateAttr(LevelPassGroupId, levelId);
-            var settlementSeed = GetOrCreateAttr(SettlementSeedGroupId, levelId);
-            var levelState = GetOrCreateAttr(LevelStateGroupId, levelId);
+            var levelPass = Player.Attributes.GetOrCreate(LevelPassGroupId, levelId);
+            var settlementSeed = Player.Attributes.GetOrCreate(SettlementSeedGroupId, levelId);
+            var levelState = Player.Attributes.GetOrCreate(LevelStateGroupId, levelId);
             var isFirstClear = levelPass.Val == 0 &&
                                (levelType != QuestLevelType.Daily || (levelState.Val & (1u << 8)) == 0);
 
@@ -119,10 +112,10 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
             if (levelType == QuestLevelType.Daily)
                 levelState.Val |= 1u << 8;
             levelPass.Val = levelPass.Val == uint.MaxValue ? uint.MaxValue : levelPass.Val + 1;
-            SyncAttr(sync, levelState);
-            SyncAttr(sync, levelPass);
+            Player.Attributes.SyncTo(sync, levelState);
+            Player.Attributes.SyncTo(sync, levelPass);
             settlementSeed.Val = seed;
-            SyncAttr(sync, settlementSeed);
+            Player.Attributes.SyncTo(sync, settlementSeed);
 
             Logger.Info($"Level settlement saved. uid={Player.Uid} levelType={levelType} levelId={levelId} " +
                         $"starMask={starMask} stateVal={levelState.Val} passVal={levelPass.Val}");
@@ -151,11 +144,11 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         await settlementLock.WaitAsync();
         try
         {
-            var levelState = GetOrCreateAttr(LevelStateGroupId, levelId);
+            var levelState = Player.Attributes.GetOrCreate(LevelStateGroupId, levelId);
             if ((levelState.Val & (1u << 8)) != 0)
                 return new QuestSettlementResult(new JsonArray(), Player.RewardManager.BuildFullSync());
 
-            var levelPass = GetOrCreateAttr(LevelPassGroupId, levelId);
+            var levelPass = Player.Attributes.GetOrCreate(LevelPassGroupId, levelId);
             var sync = new NtfSyncPlayer();
             await Player.RewardManager.GrantLevelRewardsAsync(levelConfig, true, levelId, sync);
 
@@ -163,8 +156,8 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
             if (levelPass.Val == 0)
                 levelPass.Val = 1;
 
-            SyncAttr(sync, levelState);
-            SyncAttr(sync, levelPass);
+            Player.Attributes.SyncTo(sync, levelState);
+            Player.Attributes.SyncTo(sync, levelPass);
 
             Logger.Info($"Plot settlement saved. uid={Player.Uid} levelId={levelId} " +
                         $"stateVal={levelState.Val} passVal={levelPass.Val}");
@@ -224,7 +217,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         var changed = false;
         foreach (var (levelId, passCount) in updates)
         {
-            var attr = GetOrCreateAttr(LevelPassGroupId, levelId);
+            var attr = Player.Attributes.GetOrCreate(LevelPassGroupId, levelId);
             if (passCount <= attr.Val)
                 continue;
 
@@ -251,7 +244,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         try
         {
             var awards = chapter.StarAwards;
-            var claimedAttr = GetOrCreateAttr(
+            var claimedAttr = Player.Attributes.GetOrCreate(
                 ChapterStarAwardGroupId,
                 (chapterId << 8) | difficult);
             var starCount = GetChapterStarCount(chapter);
@@ -289,7 +282,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
             foreach (var (index, _) in selected)
                 claimedAttr.Val |= 1u << index;
 
-            SyncAttr(sync, claimedAttr);
+            Player.Attributes.SyncTo(sync, claimedAttr);
             DatabaseHelper.SaveDatabaseType(Player.Data);
             DatabaseHelper.SaveDatabaseType(Player.InventoryManager.InventoryData);
             DatabaseHelper.SaveDatabaseType(Player.CharacterManager.CharacterData);
@@ -314,40 +307,18 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         };
 
     private uint GetPassCount(uint levelId) =>
-        Player.Data.Attrs.FirstOrDefault(x => x.Gid == LevelPassGroupId && x.Sid == levelId)?.Val ?? 0;
+        Player.Attributes.GetValue(LevelPassGroupId, levelId);
 
     private uint GetChapterStarCount(ChapterExcel chapter)
     {
         ulong total = 0;
         foreach (var levelId in chapter.Level)
         {
-            var value = Player.Data.Attrs
-                .FirstOrDefault(x => x.Gid == LevelStateGroupId && x.Sid == levelId)?.Val ?? 0;
+            var value = Player.Attributes.GetValue(LevelStateGroupId, levelId);
             total += (uint)BitOperations.PopCount(value & LevelStarMask);
         }
 
         return (uint)Math.Min(uint.MaxValue, total);
-    }
-
-    private PlayerAttr GetOrCreateAttr(uint gid, uint sid)
-    {
-        var attr = Player.Data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new PlayerAttr
-        {
-            Gid = gid,
-            Sid = sid
-        };
-        Player.Data.Attrs.Add(attr);
-        return attr;
-    }
-
-    private void SyncAttr(NtfSyncPlayer sync, PlayerAttr attr)
-    {
-        sync.Custom[Player.ToPackedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
-        sync.Custom[Player.ToShiftedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
     }
 
     private static bool TryGetUInt(JsonNode? node, out uint value)

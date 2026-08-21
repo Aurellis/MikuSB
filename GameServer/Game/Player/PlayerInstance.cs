@@ -34,7 +34,8 @@ public class PlayerInstance(PlayerGameData data)
 
     #region Data & Manager
 
-    public PlayerGameData Data { get; set; } = data;
+    public PlayerGameData Data { get; } = data;
+    public PlayerAttributes Attributes { get; } = new(data);
     public CharacterManager CharacterManager { get; set; } = null!;
     public InventoryManager InventoryManager { get; set; } = null!;
     public LineupManager LineupManager { get; set; } = null!;
@@ -236,26 +237,10 @@ public class PlayerInstance(PlayerGameData data)
         {
             foreach (var card in InventoryManager.InventoryData.SupportCards.Values) proto.Items.Add(card.ToProto());
         }
-        foreach (var x in Data.Attrs)
-        {
-            uint gid = x.Gid;
-            uint sid = x.Sid;
-            uint val = x.Val;
+        Attributes.SyncTo(proto);
 
-            if (gid == 0)
-            {
-                proto.Attrs[sid] = val;
-                continue;
-            }
-
-            proto.Attrs[ToPackedAttrKey(gid, sid)] = val;   
-            proto.Attrs[ToShiftedAttrKey(gid, sid)] = val;
-        }
-
-        foreach (var x in Data.StrAttrs)
-        {
-            proto.StrAttrs[ToShiftedAttrKey(x.Gid, x.Sid)] = x.Val;
-        }
+        foreach (var attr in Attributes.AllStrings)
+            Attributes.SyncTo(proto, attr);
 
         foreach (var (key, value) in BuildMoneySync())
         {
@@ -285,34 +270,7 @@ public class PlayerInstance(PlayerGameData data)
 
     public void SetStrAttr(uint gid, uint sid, string value)
     {
-        var attr = Data.StrAttrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
-        if (attr == null)
-        {
-            attr = new PlayerStrAttr
-            {
-                Gid = gid,
-                Sid = sid
-            };
-            Data.StrAttrs.Add(attr);
-        }
-
-        attr.Val = value;
-    }
-
-    public uint ToPackedAttrKey(uint gid, uint sid)
-    {
-        if (gid == 0)
-            return sid;
-
-        return (gid * 10000) + sid;
-    }
-
-    public uint ToShiftedAttrKey(uint gid, uint sid)
-    {
-        if (gid == 0)
-            return sid;
-
-        return (gid << 16) | sid;
+        Attributes.SetString(gid, sid, value);
     }
 
     public Dictionary<string, int> BuildMoneySync()
@@ -379,16 +337,8 @@ public class PlayerInstance(PlayerGameData data)
         }
 
         var sid = checked(moneyType * 2 + 1);
-        var attr = Data.Attrs.FirstOrDefault(x => x.Gid == 1 && x.Sid == sid);
-        if (attr == null)
-        {
-            attr = new PlayerAttr { Gid = 1, Sid = sid };
-            Data.Attrs.Add(attr);
-        }
-
-        attr.Val = Math.Min(uint.MaxValue - attr.Val, amount) + attr.Val;
-        sync.Custom[ToPackedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
-        sync.Custom[ToShiftedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
+        var attr = Attributes.Add(1, sid, amount);
+        Attributes.SyncTo(sync, attr);
         if (moneyType == 1)
         {
             foreach (var (key, value) in BuildMoneySync())
@@ -398,7 +348,7 @@ public class PlayerInstance(PlayerGameData data)
 
     private uint GetAttrValue(uint gid, uint sid)
     {
-        return Data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid)?.Val ?? 0;
+        return Attributes.GetValue(gid, sid);
     }
 
     public void BuildPlayerAttr(bool additional = false)
@@ -408,8 +358,6 @@ public class PlayerInstance(PlayerGameData data)
 
         var bootstrapAttrs = BuildLobbyBootstrapAttrs().ToList();
         if (additional) bootstrapAttrs.AddRange(BuildGirlFurnitureAttrs());
-        var existingAttrs = Data.Attrs
-            .ToDictionary(x => (x.Gid, x.Sid));
         var seenAttrs = new HashSet<(uint Gid, uint Sid)>();
 
         foreach (var (gid, sid, value) in bootstrapAttrs)
@@ -417,7 +365,8 @@ public class PlayerInstance(PlayerGameData data)
             if (!seenAttrs.Add((gid, sid)))
                 continue;
 
-            if (existingAttrs.TryGetValue((gid, sid), out var attr))
+            var attr = Attributes.Get(gid, sid);
+            if (attr != null)
             {
                 if (attr.Val < value)
                     attr.Val = value;
@@ -425,15 +374,7 @@ public class PlayerInstance(PlayerGameData data)
                 continue;
             }
 
-            var newAttr = new PlayerAttr
-            {
-                Gid = gid,
-                Sid = sid,
-                Val = value
-            };
-
-            Data.Attrs.Add(newAttr);
-            existingAttrs[(gid, sid)] = newAttr;
+            Attributes.Set(gid, sid, value);
         }
     }
 

@@ -2,8 +2,8 @@ using MikuSB.Data;
 using MikuSB.Data.Excel;
 using MikuSB.Database;
 using MikuSB.Database.Inventory;
-using MikuSB.Database.Player;
 using MikuSB.Enums.Item;
+using MikuSB.GameServer.Game.Player;
 using MikuSB.Proto;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -14,9 +14,9 @@ namespace MikuSB.GameServer.Server.CallGS.Handlers.Fishing;
 [CallGSApi("FishingServer_ConvertFood")]
 public class FishingServer_ConvertFood : ICallGSHandler
 {
-    private const uint FishingGroupId = 32;
-    private const uint CashGroupId = 1;
-    private const uint FoodBaseSid = 30000;
+    private const uint FishingGroupId = AttrIds.Fishing.Gid;
+    private const uint CashGroupId = AttrIds.CurrencyGid;
+    private const uint FoodBaseSid = AttrIds.Fishing.FoodBaseSid;
     private const uint FoodAvaTimeSubType = 1;
     private const uint ExploreAvaTimeSubType = 2;
 
@@ -40,7 +40,7 @@ public class FishingServer_ConvertFood : ICallGSHandler
         var sync = new NtfSyncPlayer();
 
         if (!HasEnoughMaterials(player.InventoryManager.InventoryData, food.NeedItem, count) ||
-            !HasEnoughCash(player.Data, food.BaitNum, count))
+            !HasEnoughCash(player.Attributes, food.BaitNum, count))
         {
             await CallGSRouter.SendScript(connection, "FishingServer_ConvertFood", "{\"sError\":\"tip.girlcard_cmd_err\"}");
             return;
@@ -119,7 +119,7 @@ public class FishingServer_ConvertFood : ICallGSHandler
         }
     }
 
-    private static bool HasEnoughCash(PlayerGameData data, IReadOnlyList<uint> baitNum, uint multiplier)
+    private static bool HasEnoughCash(PlayerAttributes attributes, IReadOnlyList<uint> baitNum, uint multiplier)
     {
         if (baitNum.Count < 2)
             return true;
@@ -127,8 +127,7 @@ public class FishingServer_ConvertFood : ICallGSHandler
         var moneyType = baitNum[0];
         var need = checked(baitNum[1] * multiplier);
         var sid = moneyType * 2 + 1;
-        var attr = data.Attrs.FirstOrDefault(x => x.Gid == CashGroupId && x.Sid == sid);
-        return (attr?.Val ?? 0) >= need;
+        return attributes.GetValue(CashGroupId, sid) >= need;
     }
 
     private static void ConsumeCash(MikuSB.GameServer.Game.Player.PlayerInstance player, IReadOnlyList<uint> baitNum, uint multiplier, NtfSyncPlayer sync)
@@ -139,19 +138,19 @@ public class FishingServer_ConvertFood : ICallGSHandler
         var moneyType = baitNum[0];
         var sid = moneyType * 2 + 1;
         var need = checked(baitNum[1] * multiplier);
-        var attr = GetOrCreateAttr(player.Data, CashGroupId, sid);
+        var attr = player.Attributes.GetOrCreate(CashGroupId, sid);
         attr.Val -= need;
-        SyncAttr(player, sync, attr);
+        player.Attributes.SyncTo(sync, attr);
     }
 
     private static void ApplyFoodDuration(MikuSB.GameServer.Game.Player.PlayerInstance player, FishingFoodExcel food, uint subType, uint count, NtfSyncPlayer sync)
     {
         var sid = FoodBaseSid + food.Id * 10 + subType;
-        var attr = GetOrCreateAttr(player.Data, FishingGroupId, sid);
+        var attr = player.Attributes.GetOrCreate(FishingGroupId, sid);
         var now = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var startTime = Math.Max(attr.Val, now);
         attr.Val = checked(startTime + food.EffectTime * count);
-        SyncAttr(player, sync, attr);
+        player.Attributes.SyncTo(sync, attr);
     }
 
     private static async Task<JsonArray> CreateItemsAsync(MikuSB.GameServer.Game.Player.PlayerInstance player, NtfSyncPlayer sync, IReadOnlyList<uint> createItem, uint multiplier)
@@ -217,22 +216,6 @@ public class FishingServer_ConvertFood : ICallGSHandler
         return item;
     }
 
-    private static PlayerAttr GetOrCreateAttr(PlayerGameData data, uint gid, uint sid)
-    {
-        var attr = data.Attrs.FirstOrDefault(x => x.Gid == gid && x.Sid == sid);
-        if (attr != null)
-            return attr;
-
-        attr = new PlayerAttr { Gid = gid, Sid = sid, Val = 0 };
-        data.Attrs.Add(attr);
-        return attr;
-    }
-
-    private static void SyncAttr(MikuSB.GameServer.Game.Player.PlayerInstance player, NtfSyncPlayer sync, PlayerAttr attr)
-    {
-        sync.Custom[player.ToPackedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
-        sync.Custom[player.ToShiftedAttrKey(attr.Gid, attr.Sid)] = attr.Val;
-    }
 }
 
 internal sealed class FishingConvertFoodParam
