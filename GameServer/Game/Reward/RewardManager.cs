@@ -71,6 +71,7 @@ public sealed class RewardManager(PlayerInstance player) : BasePlayerManager(pla
 
         foreach (var attr in Player.Attributes.All)
             Player.Attributes.SyncTo(sync, attr);
+        Player.QuestManager.SyncTestingStateTo(sync);
 
         foreach (var item in Player.CharacterManager.CharacterData.Characters)
             sync.Items.Add(item.ToProto());

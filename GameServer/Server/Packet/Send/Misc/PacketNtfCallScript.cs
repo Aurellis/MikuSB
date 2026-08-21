@@ -113,6 +113,7 @@ public class PacketNtfCallScript : BasePacket
         var sync = new NtfSyncPlayer();
         foreach (var attr in Player.Attributes.All)
             Player.Attributes.SyncTo(sync, attr);
+        Player.QuestManager.SyncTestingStateTo(sync);
         foreach (var (key, value) in Player.BuildMoneySync())
             sync.Money[key] = value;
         proto.ExtraSync = sync;

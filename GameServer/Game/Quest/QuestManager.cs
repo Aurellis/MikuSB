@@ -18,6 +18,7 @@ public enum QuestLevelType
 
 public readonly record struct QuestSettlementResult(JsonArray Rewards, NtfSyncPlayer Sync);
 public readonly record struct ChapterStarAwardResult(JsonObject Response, NtfSyncPlayer Sync);
+public readonly record struct QuestCompletionResult(int LevelCount, NtfSyncPlayer Sync);
 
 public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
 {
@@ -32,6 +33,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
     private const uint LegacyUnlockedLevelPassTime = 1_700_000_000;
     private static readonly Logger Logger = new("Quest");
     private readonly SemaphoreSlim settlementLock = new(1, 1);
+    private bool allLevelsCompletedForTesting = player.Data.CompleteAllQuestLevels;
 
     public void RemoveLegacyLevelUnlocks()
     {
@@ -75,6 +77,65 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         DatabaseHelper.SaveDatabaseType(Player.Data);
     }
 
+    public async ValueTask<QuestCompletionResult> SetAllLevelsForTestingAsync(bool completed)
+    {
+        await settlementLock.WaitAsync();
+        try
+        {
+            var sync = new NtfSyncPlayer();
+            var levelConfigs = GetAllLevelConfigs().ToArray();
+            var levelCount = levelConfigs
+                .Select(x => x.LevelConfig.ID)
+                .Distinct()
+                .Count();
+
+            allLevelsCompletedForTesting = completed;
+            Player.Data.CompleteAllQuestLevels = completed;
+            if (completed)
+            {
+                SyncTestingStateTo(sync);
+            }
+            else
+            {
+                foreach (var levelId in levelConfigs.Select(x => x.LevelConfig.ID).Distinct())
+                {
+                    SyncStoredLevelState(LevelStateGroupId, levelId, sync);
+                    SyncStoredLevelState(LevelPassGroupId, levelId, sync);
+                }
+            }
+
+            DatabaseHelper.SaveCompleteAllQuestLevels(Player.Data);
+            Logger.Info($"All quest levels updated for testing. uid={Player.Uid} completed={completed} levelCount={levelCount}");
+            return new QuestCompletionResult(levelCount, sync);
+        }
+        finally
+        {
+            settlementLock.Release();
+        }
+    }
+
+    public void SyncTestingStateTo(NtfSyncPlayer sync)
+    {
+        if (!allLevelsCompletedForTesting)
+            return;
+
+        var states = new Dictionary<uint, uint>();
+        foreach (var (levelType, levelConfig) in GetAllLevelConfigs())
+            states[levelConfig.ID] = states.GetValueOrDefault(levelConfig.ID) |
+                                     GetCompletedState(levelType, levelConfig);
+
+        foreach (var (levelId, state) in states)
+        {
+            Player.Attributes.SyncTo(sync, LevelStateGroupId, levelId, state);
+            Player.Attributes.SyncTo(sync, LevelPassGroupId, levelId, 1);
+        }
+    }
+
+    private void SyncStoredLevelState(uint groupId, uint levelId, NtfSyncPlayer sync)
+    {
+        Player.Attributes.SyncTo(sync, groupId, levelId, Player.Attributes.GetValue(groupId, levelId));
+    }
+
     public async ValueTask<QuestSettlementResult?> SettleLevelAsync(
         QuestLevelType levelType,
         uint levelId,
@@ -95,8 +156,8 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
             var levelPass = Player.Attributes.GetOrCreate(LevelPassGroupId, levelId);
             var settlementSeed = Player.Attributes.GetOrCreate(SettlementSeedGroupId, levelId);
             var levelState = Player.Attributes.GetOrCreate(LevelStateGroupId, levelId);
-            var isFirstClear = levelPass.Val == 0 &&
-                               (levelType != QuestLevelType.Daily || (levelState.Val & (1u << 8)) == 0);
+            var isFirstClear = GetPassCount(levelId) == 0 &&
+                               (levelType != QuestLevelType.Daily || (GetLevelState(levelType, levelId) & (1u << 8)) == 0);
 
             if (settlementSeed.Val == seed)
             {
@@ -145,7 +206,7 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         try
         {
             var levelState = Player.Attributes.GetOrCreate(LevelStateGroupId, levelId);
-            if ((levelState.Val & (1u << 8)) != 0)
+            if ((GetLevelState(QuestLevelType.Chapter, levelId) & (1u << 8)) != 0)
                 return new QuestSettlementResult(new JsonArray(), Player.RewardManager.BuildFullSync());
 
             var levelPass = Player.Attributes.GetOrCreate(LevelPassGroupId, levelId);
@@ -189,6 +250,9 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
         if (ResolveLevelConfig(levelType, levelId) == null)
             return false;
 
+        if (allLevelsCompletedForTesting)
+            return true;
+
         var predecessorIds = GetLevelConfigs(levelType)
             .Where(level => level.NextId() == levelId)
             .Select(level => level.ID)
@@ -201,6 +265,9 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
     {
         if (payload is not JsonObject root || root["tbData"] is not JsonArray rows)
             return false;
+
+        if (allLevelsCompletedForTesting)
+            return true;
 
         var updates = new List<(uint LevelId, uint PassCount)>();
         foreach (var rowNode in rows)
@@ -306,15 +373,42 @@ public class QuestManager(PlayerInstance player) : BasePlayerManager(player)
             _ => []
         };
 
+    private IEnumerable<(QuestLevelType LevelType, ILevelRewardConfig LevelConfig)> GetAllLevelConfigs()
+    {
+        foreach (var levelType in Enum.GetValues<QuestLevelType>())
+        {
+            foreach (var levelConfig in GetLevelConfigs(levelType))
+                yield return (levelType, levelConfig);
+        }
+    }
+
+    private static uint GetCompletedState(QuestLevelType levelType, ILevelRewardConfig levelConfig)
+    {
+        if (levelType == QuestLevelType.Chapter && levelConfig.IsPlot())
+            return 1u << 8;
+
+        return levelType == QuestLevelType.Daily
+            ? LevelStarMask | (1u << 8)
+            : LevelStarMask;
+    }
+
     private uint GetPassCount(uint levelId) =>
-        Player.Attributes.GetValue(LevelPassGroupId, levelId);
+        allLevelsCompletedForTesting ? 1 : Player.Attributes.GetValue(LevelPassGroupId, levelId);
+
+    private uint GetLevelState(QuestLevelType levelType, uint levelId)
+    {
+        if (allLevelsCompletedForTesting && ResolveLevelConfig(levelType, levelId) is { } levelConfig)
+            return GetCompletedState(levelType, levelConfig);
+
+        return Player.Attributes.GetValue(LevelStateGroupId, levelId);
+    }
 
     private uint GetChapterStarCount(ChapterExcel chapter)
     {
         ulong total = 0;
         foreach (var levelId in chapter.Level)
         {
-            var value = Player.Attributes.GetValue(LevelStateGroupId, levelId);
+            var value = GetLevelState(QuestLevelType.Chapter, levelId);
             total += (uint)BitOperations.PopCount(value & LevelStarMask);
         }
 
